@@ -121,7 +121,25 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
   <select id="fEyes"></select>
   <label>HOW I ADDRESS YOU</label>
   <input type="text" id="fTitle" placeholder="sir">
-  <label>VOICE</label>
+  <label>VOICE ENGINE</label>
+  <select id="fEngine">
+    <option value="phone">Phone voice (built in)</option>
+    <option value="kokoro">Jarvis studio voice (needs the Termux voice server)</option>
+  </select>
+  <div id="kBox" style="display:none">
+    <label>STUDIO VOICE</label>
+    <select id="fKVoice">
+      <option value="bm_george">George — British, classic Jarvis</option>
+      <option value="bm_lewis">Lewis — British, deeper</option>
+      <option value="bm_daniel">Daniel — British, smooth</option>
+      <option value="bm_fable">Fable — British, storyteller</option>
+    </select>
+    <label>VOICE SERVER ADDRESS</label>
+    <input type="text" id="fKUrl" placeholder="http://localhost:8880" autocapitalize="off" autocomplete="off">
+    <div class="row"><button class="btn" id="bKCheck">Check connection</button></div>
+    <small id="kStat"></small>
+  </div>
+  <label id="pvLabel">PHONE VOICE</label>
   <select id="fVoice"></select>
   <label>SPEED <span id="vRate"></span></label>
   <input type="range" id="fRate" min="0.6" max="1.3" step="0.05">
@@ -151,7 +169,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 const $=s=>document.querySelector(s);
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 const API='https://api.groq.com/openai/v1';
-const S={key:LS.get('jv_key',''),brain:LS.get('jv_brain','openai/gpt-oss-120b'),eyes:LS.get('jv_eyes','qwen/qwen3.8-27b'),voice:LS.get('jv_voice',''),rate:LS.get('jv_rate',0.95),pitch:LS.get('jv_pitch',0.85),title:LS.get('jv_title','sir'),hands:false};
+const S={key:LS.get('jv_key',''),brain:LS.get('jv_brain','openai/gpt-oss-120b'),eyes:LS.get('jv_eyes','qwen/qwen3.8-27b'),voice:LS.get('jv_voice',''),rate:LS.get('jv_rate',0.95),pitch:LS.get('jv_pitch',0.85),title:LS.get('jv_title','sir'),engine:LS.get('jv_engine','phone'),kvoice:LS.get('jv_kvoice','bm_george'),kurl:LS.get('jv_kurl','http://localhost:8880'),hands:false};
 let mem=LS.get('jv_mem',[]),hist=LS.get('jv_hist',[]),loc=LS.get('jv_loc',null);
 let busy=false,pending=[],models=[];
 const orb=$('#orb'),log=$('#log'),inp=$('#inp');
@@ -186,18 +204,51 @@ function pickVoice(){
   return male||gb[0]||voices.find(v=>/^en/i.test(v.lang))||null;
 }
 function clean(t){return t.replace(/```[\s\S]*?```/g,' code omitted. ').replace(/\[([^\]]+)\]\([^)]+\)/g,'$1').replace(/https?:\/\/\S+/g,'link').replace(/[*_#`>~|]/g,'').replace(/\s+/g,' ').trim()}
-function say(t){t=clean(t);if(!t)return;q.push(t);if(!speaking)nextSpeech()}
-function nextSpeech(){
-  if(!q.length){speaking=false;onSpeechDone();return}
-  speaking=true;setState('speaking');
-  const g=gen,u=new SpeechSynthesisUtterance(q.shift());
+let curAudio=null,warned=false;
+function kurlBase(){return (S.kurl||'http://localhost:8880').trim().replace(/\/+$/,'')}
+async function kfetch(text){
+  const r=await fetch(kurlBase()+'/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text,voice:S.kvoice,speed:S.rate})});
+  if(!r.ok)throw new Error('voice server answered '+r.status);
+  return URL.createObjectURL(await r.blob());
+}
+function say(t){
+  t=clean(t);if(!t)return;
+  const it={text:t,p:null};
+  if(S.engine==='kokoro'){it.p=kfetch(t);it.p.catch(()=>{})}
+  q.push(it);if(!speaking)nextSpeech();
+}
+function phoneSpeak(text,done){
+  const u=new SpeechSynthesisUtterance(text);
   const v=pickVoice();if(v){u.voice=v;u.lang=v.lang}else u.lang='en-GB';
   u.rate=S.rate;u.pitch=S.pitch;
-  const done=()=>{if(g===gen)nextSpeech()};
   u.onend=done;u.onerror=done;
   try{speechSynthesis.speak(u)}catch(e){done()}
 }
-function hush(){gen++;q=[];speaking=false;try{speechSynthesis.cancel()}catch(e){}}
+async function nextSpeech(){
+  if(!q.length){speaking=false;onSpeechDone();return}
+  speaking=true;
+  const g=gen,it=q.shift();
+  const done=()=>{if(g===gen)nextSpeech()};
+  if(it.p){
+    setState('thinking','Preparing voice…');
+    try{
+      const url=await it.p;
+      if(g!==gen){URL.revokeObjectURL(url);return}
+      const a=new Audio(url);curAudio=a;
+      a.onplaying=()=>{if(g===gen)setState('speaking')};
+      a.onended=()=>{URL.revokeObjectURL(url);done()};
+      a.onerror=()=>{URL.revokeObjectURL(url);phoneSpeak(it.text,done)};
+      await a.play();
+      return;
+    }catch(e){
+      if(g!==gen)return;
+      if(!warned){warned=true;toast('Studio voice is offline, using the phone voice. Start the voice server in Termux.',5000)}
+    }
+  }
+  setState('speaking');
+  phoneSpeak(it.text,done);
+}
+function hush(){gen++;q=[];speaking=false;if(curAudio){try{curAudio.pause()}catch(e){}curAudio=null}try{speechSynthesis.cancel()}catch(e){}}
 function onSpeechDone(){
   if(!busy){setState('idle');if(S.hands)setTimeout(startListen,350)}
 }
@@ -470,11 +521,25 @@ async function loadModels(){
 function openSettings(){
   $('#fKey').value=S.key;$('#fTitle').value=S.title;$('#fRate').value=S.rate;$('#fPitch').value=S.pitch;
   $('#vRate').textContent=S.rate;$('#vPitch').textContent=S.pitch;
+  $('#fEngine').value=S.engine;$('#fKVoice').value=S.kvoice;$('#fKUrl').value=S.kurl;$('#kStat').textContent='';toggleK();
   loadVoices();fillModels();loadModels();$('#ov').classList.add('show');
+}
+function toggleK(){const k=$('#fEngine').value==='kokoro';$('#kBox').style.display=k?'block':'none';$('#pvLabel').textContent=k?'BACKUP PHONE VOICE (used if the studio voice is offline)':'PHONE VOICE'}
+async function checkK(){
+  const el=$('#kStat');el.style.color='var(--mut)';el.textContent='Checking…';
+  try{
+    const c=new AbortController();const t=setTimeout(()=>c.abort(),5000);
+    const base=($('#fKUrl').value||'http://localhost:8880').trim().replace(/\/+$/,'');
+    const r=await fetch(base+'/health',{signal:c.signal});clearTimeout(t);
+    if(!r.ok)throw new Error('bad');
+    el.style.color='#7dffb2';el.textContent='Connected. The studio voice is ready.';
+  }catch(e){el.style.color='var(--err)';el.textContent='Cannot reach the voice server. Is it running in Termux? If Chrome asked about local network access, tap Allow.'}
 }
 function saveSettings(){
   S.key=$('#fKey').value.trim();S.brain=$('#fBrain').value||S.brain;S.eyes=$('#fEyes').value||S.eyes;
   S.title=$('#fTitle').value.trim()||'sir';S.voice=$('#fVoice').value;S.rate=parseFloat($('#fRate').value);S.pitch=parseFloat($('#fPitch').value);
+  S.engine=$('#fEngine').value;S.kvoice=$('#fKVoice').value;S.kurl=($('#fKUrl').value||'http://localhost:8880').trim();warned=false;
+  LS.set('jv_engine',S.engine);LS.set('jv_kvoice',S.kvoice);LS.set('jv_kurl',S.kurl);
   LS.set('jv_key',S.key);LS.set('jv_brain',S.brain);LS.set('jv_eyes',S.eyes);LS.set('jv_title',S.title);LS.set('jv_voice',S.voice);LS.set('jv_rate',S.rate);LS.set('jv_pitch',S.pitch);
   $('#ov').classList.remove('show');toast('Settings saved');
 }
@@ -497,11 +562,14 @@ $('#bClose').onclick=()=>$('#ov').classList.remove('show');
 $('#bSave').onclick=saveSettings;
 $('#bMem').onclick=()=>{renderMem();$('#ovm').classList.add('show')};
 $('#mClose').onclick=()=>$('#ovm').classList.remove('show');
+$('#fEngine').onchange=toggleK;
+$('#bKCheck').onclick=checkK;
 $('#fRate').oninput=e=>$('#vRate').textContent=e.target.value;
 $('#fPitch').oninput=e=>$('#vPitch').textContent=e.target.value;
 $('#fKey').addEventListener('change',()=>{S.key=$('#fKey').value.trim();loadModels()});
 $('#bTest').onclick=()=>{
   S.voice=$('#fVoice').value;S.rate=parseFloat($('#fRate').value);S.pitch=parseFloat($('#fPitch').value);
+  S.engine=$('#fEngine').value;S.kvoice=$('#fKVoice').value;S.kurl=($('#fKUrl').value||'http://localhost:8880').trim();warned=false;
   hush();say(greeting()+', '+($('#fTitle').value.trim()||'sir')+'. All systems are online and at your disposal.');
 };
 $('#bClear').onclick=()=>{hist=[];LS.set('jv_hist',hist);log.innerHTML='';hello();toast('Conversation cleared')};
