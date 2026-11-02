@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>J.A.R.V.I.S.</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#030b14">
+<style>
+:root{--bg:#030b14;--panel:#0a1a2b;--line:#12384f;--cy:#4fe3ff;--cy2:#0aa6d6;--tx:#d6f4ff;--mut:#7fa6b8;--amb:#ffb347;--err:#ff7b7b}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{display:flex;flex-direction:column;height:100dvh;overflow:hidden;background:radial-gradient(ellipse at 50% 16%,#0b2a40 0,#030b14 62%)}
+header{display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top) + 8px) 14px 4px}
+.brand{letter-spacing:.38em;font-size:13px;color:var(--cy);font-weight:600;text-shadow:0 0 12px #4fe3ff66}
+.hb{display:flex;gap:8px}
+.ib{background:#0a1a2bcc;border:1px solid var(--line);color:var(--tx);border-radius:12px;min-width:42px;height:42px;font-size:18px;cursor:pointer}
+.ib.on{border-color:var(--cy);box-shadow:0 0 14px #4fe3ff66;background:#0b2f44}
+#stage{display:flex;flex-direction:column;align-items:center;padding:4px 0 0}
+#orb{width:min(46vw,190px);height:min(46vw,190px);cursor:pointer;filter:drop-shadow(0 0 22px #4fe3ff55);transition:filter .4s}
+#orb svg{width:100%;height:100%;overflow:visible}
+.ring{fill:none;stroke:var(--cy);transform-origin:center;transform-box:fill-box}
+.r1{stroke-width:2;stroke-dasharray:6 10;animation:spin 24s linear infinite}
+.r2{stroke-width:3;stroke-dasharray:60 20 14 20;opacity:.8;animation:spin 16s linear infinite reverse}
+.r3{stroke-width:1.5;opacity:.6;stroke-dasharray:2 6;animation:spin 40s linear infinite}
+.tri{fill:none;stroke:var(--cy2);stroke-width:2;transform-origin:center;transform-box:fill-box;animation:spin 30s linear infinite reverse}
+.core{fill:url(#cg);transform-origin:center;transform-box:fill-box;animation:pulse 3.6s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{transform:scale(.94);opacity:.85}50%{transform:scale(1.04);opacity:1}}
+@keyframes talk{0%,100%{transform:scale(.9)}25%{transform:scale(1.12)}60%{transform:scale(.98)}80%{transform:scale(1.08)}}
+#orb.listening{filter:drop-shadow(0 0 30px #7dffb2aa)}
+#orb.listening .core{animation-duration:1.2s}
+#orb.listening .ring,#orb.listening .tri{stroke:#7dffb2}
+#orb.thinking{filter:drop-shadow(0 0 28px #ffb347aa)}
+#orb.thinking .ring,#orb.thinking .tri{stroke:var(--amb)}
+#orb.thinking .r1,#orb.thinking .r2{animation-duration:3s}
+#orb.speaking .core{animation:talk .7s ease-in-out infinite}
+#orb.speaking{filter:drop-shadow(0 0 34px #4fe3ffcc)}
+#status{margin-top:2px;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--mut);min-height:16px}
+#log{flex:1;overflow-y:auto;padding:10px 14px 6px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth;-webkit-overflow-scrolling:touch}
+.m{max-width:min(92%,720px);line-height:1.45;font-size:15.5px;white-space:pre-wrap;word-wrap:break-word}
+.m.u{align-self:flex-end;background:#0e2f46;border:1px solid var(--line);padding:9px 13px;border-radius:16px 16px 4px 16px}
+.m.j{align-self:flex-start;border-left:2px solid var(--cy);padding:2px 0 2px 12px;color:#e8fbff}
+.m.e{align-self:center;color:var(--err);font-size:14px;text-align:center;border:1px solid #5a2a2a;background:#2a1111;padding:8px 12px;border-radius:12px}
+.m .act{display:block;font-size:12px;color:var(--amb);letter-spacing:.04em;margin-bottom:3px}
+.m img{display:block;max-width:120px;max-height:120px;border-radius:10px;margin:0 6px 6px 0;float:left}
+.m .clr{clear:both}
+#chips{display:flex;gap:8px;flex-wrap:wrap;padding:0 14px}
+.chip{display:flex;align-items:center;gap:6px;background:#0a1a2b;border:1px solid var(--line);border-radius:12px;padding:4px 8px;font-size:12px;color:var(--mut)}
+.chip img{width:34px;height:34px;object-fit:cover;border-radius:6px}
+.chip b{cursor:pointer;color:var(--err);padding:0 4px;font-size:15px}
+#bar{display:flex;gap:8px;align-items:center;padding:8px 12px calc(env(safe-area-inset-bottom) + 12px)}
+#inp{flex:1;min-width:0;height:46px;background:#07121f;border:1px solid var(--line);border-radius:23px;color:var(--tx);padding:0 16px;font-size:16px;outline:none}
+#inp:focus{border-color:var(--cy)}
+#send{background:var(--cy2);border-color:var(--cy2);color:#00131c}
+#mic.on{background:#0f4a33;border-color:#7dffb2}
+#ov,#ovm{position:fixed;inset:0;background:#000b;display:none;align-items:center;justify-content:center;z-index:9;padding:14px}
+#ov.show,#ovm.show{display:flex}
+.card{background:#071624;border:1px solid var(--line);border-radius:18px;width:min(100%,520px);max-height:92dvh;overflow-y:auto;padding:16px 16px 18px}
+.card h2{margin:0 0 10px;font-size:15px;letter-spacing:.25em;color:var(--cy)}
+.card label{display:block;font-size:12px;color:var(--mut);margin:12px 0 4px;letter-spacing:.06em}
+.card input[type=password],.card input[type=text],.card select{width:100%;height:44px;background:#07121f;border:1px solid var(--line);border-radius:10px;color:var(--tx);padding:0 10px;font-size:16px}
+.card input[type=range]{width:100%}
+.card a{color:var(--cy)}
+.card small{color:var(--mut);line-height:1.4;display:block;margin-top:6px}
+.row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.btn{flex:1;min-width:110px;height:44px;border-radius:12px;border:1px solid var(--line);background:#0a1a2b;color:var(--tx);font-size:15px;cursor:pointer}
+.btn.pri{background:var(--cy2);border-color:var(--cy2);color:#00131c;font-weight:600}
+.mi{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;border-bottom:1px solid #12384f66;padding:8px 0;font-size:14px}
+.mi b{color:var(--err);cursor:pointer;padding:0 6px}
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 84px);transform:translateX(-50%);background:#0b2f44;border:1px solid var(--cy);color:var(--tx);padding:8px 14px;border-radius:12px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:12;max-width:90%;text-align:center}
+#toast.show{opacity:1}
+@media (min-width:700px){#orb{width:210px;height:210px}}
+@media (max-height:520px){#orb{width:90px;height:90px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">J.A.R.V.I.S.</div>
+  <div class="hb">
+    <button class="ib" id="bHands" title="Hands-free conversation">🎧</button>
+    <button class="ib" id="bMem" title="Memory">🧠</button>
+    <button class="ib" id="bSet" title="Settings">⚙️</button>
+  </div>
+</header>
+
+<div id="stage">
+  <div id="orb" class="idle" title="Tap to talk, or tap while I speak to silence me">
+    <svg viewBox="-100 -100 200 200">
+      <defs><radialGradient id="cg"><stop offset="0" stop-color="#ffffff"/><stop offset=".35" stop-color="#9af0ff"/><stop offset="1" stop-color="#0aa6d6" stop-opacity=".15"/></radialGradient></defs>
+      <circle class="ring r3" r="96"/>
+      <circle class="ring r1" r="86"/>
+      <circle class="ring r2" r="70"/>
+      <polygon class="tri" points="0,-54 47,27 -47,27"/>
+      <circle class="core" r="30"/>
+    </svg>
+  </div>
+  <div id="status">Standing by</div>
+</div>
+
+<div id="log"></div>
+<div id="chips"></div>
+
+<div id="bar">
+  <button class="ib" id="bAtt" title="Send a photo, video or file">📎</button>
+  <input id="inp" type="text" placeholder="Speak or type, sir…" autocomplete="off" enterkeyhint="send">
+  <button class="ib" id="mic" title="Talk">🎤</button>
+  <button class="ib" id="send" title="Send">➤</button>
+  <input type="file" id="file" accept="image/*,video/*,.txt,.md,.csv,.json,.js,.py,.html,.css,.log" multiple hidden>
+</div>
+
+<div id="ov"><div class="card">
+  <h2>SETTINGS</h2>
+  <label>GROQ API KEY (free — stays only on this phone)</label>
+  <input type="password" id="fKey" placeholder="gsk_..." autocomplete="off">
+  <small>Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a></small>
+  <label>BRAIN (chat model)</label>
+  <select id="fBrain"></select>
+  <label>EYES (photo model)</label>
+  <select id="fEyes"></select>
+  <label>HOW I ADDRESS YOU</label>
+  <input type="text" id="fTitle" placeholder="sir">
+  <label>VOICE</label>
+  <select id="fVoice"></select>
+  <label>SPEED <span id="vRate"></span></label>
+  <input type="range" id="fRate" min="0.6" max="1.3" step="0.05">
+  <label>PITCH (lower = deeper) <span id="vPitch"></span></label>
+  <input type="range" id="fPitch" min="0.5" max="1.4" step="0.05">
+  <div class="row">
+    <button class="btn" id="bTest">🔊 Test voice</button>
+    <button class="btn" id="bClear">🗑 Clear chat</button>
+  </div>
+  <div class="row">
+    <button class="btn" id="bClose">Close</button>
+    <button class="btn pri" id="bSave">Save</button>
+  </div>
+</div></div>
+
+<div id="ovm"><div class="card">
+  <h2>MEMORY</h2>
+  <div id="memList"></div>
+  <small>Things I remember about you. Tell me "remember that…" or "forget …". Saved only on this phone.</small>
+  <div class="row"><button class="btn" id="mClose">Close</button></div>
+</div></div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $=s=>document.querySelector(s);
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const API='https://api.groq.com/openai/v1';
+const S={key:LS.get('jv_key',''),brain:LS.get('jv_brain','openai/gpt-oss-120b'),eyes:LS.get('jv_eyes','qwen/qwen3.8-27b'),voice:LS.get('jv_voice',''),rate:LS.get('jv_rate',0.95),pitch:LS.get('jv_pitch',0.85),title:LS.get('jv_title','sir'),hands:false};
+let mem=LS.get('jv_mem',[]),hist=LS.get('jv_hist',[]),loc=LS.get('jv_loc',null);
+let busy=false,pending=[],models=[];
+const orb=$('#orb'),log=$('#log'),inp=$('#inp');
+
+/* ---------- small helpers ---------- */
+function toast(t,ms=2600){const e=$('#toast');e.textContent=t;e.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),ms)}
+function setState(st,txt){orb.className=st;$('#status').textContent=txt||({idle:'Standing by',listening:'Listening…',thinking:'Thinking…',speaking:'Speaking…'}[st])}
+function addMsg(cls,text,imgs){
+  const d=document.createElement('div');d.className='m '+cls;
+  if(imgs&&imgs.length){imgs.forEach(u=>{const i=document.createElement('img');i.src=u;d.appendChild(i)});const c=document.createElement('span');c.className='clr';d.appendChild(c)}
+  const t=document.createElement('span');t.className='txt';t.textContent=text;d.appendChild(t);
+  log.appendChild(d);log.scrollTop=log.scrollHeight;return d;
+}
+function setTxt(el,text){el.querySelector('.txt').textContent=text;log.scrollTop=log.scrollHeight}
+function setAct(el,text){let a=el.querySelector('.act');if(!a){a=document.createElement('span');a.className='act';el.insertBefore(a,el.firstChild)}a.textContent=text;log.scrollTop=log.scrollHeight}
+function greeting(){const h=new Date().getHours();return h<5?'Good evening':h<12?'Good morning':h<18?'Good afternoon':'Good evening'}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+/* ---------- speech out ---------- */
+let voices=[],q=[],speaking=false,gen=0;
+function loadVoices(){
+  try{voices=speechSynthesis.getVoices()||[]}catch(e){voices=[]}
+  const sel=$('#fVoice');sel.innerHTML='';
+  const auto=document.createElement('option');auto.value='';auto.textContent='Auto (best British male)';sel.appendChild(auto);
+  voices.filter(v=>/^en/i.test(v.lang)).forEach(v=>{const o=document.createElement('option');o.value=v.voiceURI||v.name;o.textContent=v.name+' ('+v.lang+')';sel.appendChild(o)});
+  sel.value=S.voice;if(sel.value!==S.voice)sel.value='';
+}
+function pickVoice(){
+  if(S.voice){const v=voices.find(v=>(v.voiceURI||v.name)===S.voice);if(v)return v}
+  const gb=voices.filter(v=>/^en[-_]GB/i.test(v.lang));
+  const male=gb.find(v=>/male|george|daniel|ryan|arthur|oliver|thomas/i.test(v.name)&&!/female/i.test(v.name));
+  return male||gb[0]||voices.find(v=>/^en/i.test(v.lang))||null;
+}
+function clean(t){return t.replace(/```[\s\S]*?```/g,' code omitted. ').replace(/\[([^\]]+)\]\([^)]+\)/g,'$1').replace(/https?:\/\/\S+/g,'link').replace(/[*_#`>~|]/g,'').replace(/\s+/g,' ').trim()}
+function say(t){t=clean(t);if(!t)return;q.push(t);if(!speaking)nextSpeech()}
+function nextSpeech(){
+  if(!q.length){speaking=false;onSpeechDone();return}
+  speaking=true;setState('speaking');
+  const g=gen,u=new SpeechSynthesisUtterance(q.shift());
+  const v=pickVoice();if(v){u.voice=v;u.lang=v.lang}else u.lang='en-GB';
+  u.rate=S.rate;u.pitch=S.pitch;
+  const done=()=>{if(g===gen)nextSpeech()};
+  u.onend=done;u.onerror=done;
+  try{speechSynthesis.speak(u)}catch(e){done()}
+}
+function hush(){gen++;q=[];speaking=false;try{speechSynthesis.cancel()}catch(e){}}
+function onSpeechDone(){
+  if(!busy){setState('idle');if(S.hands)setTimeout(startListen,350)}
+}
+let sb='';
+function feed(d){
+  sb+=d;let m;
+  while((m=sb.match(/^([\s\S]{12,}?[.!?:;])\s+([\s\S]*)$/))){say(m[1]);sb=m[2]}
+  if(sb.length>240){const k=sb.lastIndexOf(', ',200);if(k>40){say(sb.slice(0,k+1));sb=sb.slice(k+2)}}
+}
+function flush(){if(sb.trim())say(sb);sb=''}
+
+/* ---------- speech in ---------- */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null,listening=false;
+function startListen(){
+  if(!SR){toast('Voice input is not supported in this browser. Please use Chrome.');S.hands=false;paintHands();return}
+  if(listening||busy||speaking)return;
+  rec=new SR();rec.lang='en-GB';rec.interimResults=true;rec.continuous=false;
+  let finalT='';
+  rec.onstart=()=>{listening=true;setState('listening');$('#mic').classList.add('on')};
+  rec.onresult=e=>{let t='';for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;inp.value=t;if(e.results[e.results.length-1].isFinal)finalT=t};
+  rec.onerror=e=>{
+    if(e.error==='not-allowed'||e.error==='service-not-allowed'){S.hands=false;paintHands();toast('Microphone permission was denied. Allow it in Chrome site settings.',4200)}
+    else if(e.error==='audio-capture'||e.error==='network'){S.hands=false;paintHands();toast('Voice input problem: '+e.error)}
+  };
+  rec.onend=()=>{
+    listening=false;$('#mic').classList.remove('on');
+    if(finalT.trim()){inp.value='';send(finalT.trim())}
+    else{setState('idle');inp.value='';if(S.hands&&!busy&&!speaking)setTimeout(startListen,500)}
+  };
+  try{rec.start()}catch(e){listening=false}
+}
+function stopListen(){if(rec&&listening){try{rec.abort()}catch(e){}}listening=false;$('#mic').classList.remove('on')}
+function paintHands(){$('#bHands').classList.toggle('on',S.hands)}
+
+/* ---------- network ---------- */
+class HttpErr extends Error{constructor(s,m){super(m);this.status=s}}
+function friendly(e){
+  if(e instanceof HttpErr){
+    if(e.status===401)return 'Groq rejected the API key. Open settings (⚙️) and check it.';
+    if(e.status===404)return 'That model is not available to your account. Open settings (⚙️) and pick another one.';
+    if(e.status===429)return 'The free limit is busy right now. Give me a minute and try again.';
+    if(e.status===413)return 'That was too much for the free tier. Try a smaller picture or file.';
+    return 'Groq said: '+e.message;
+  }
+  return e.message||String(e);
+}
+async function countdown(sec){
+  for(let s=Math.ceil(sec);s>0;s--){$('#status').textContent='Free limit — waiting '+s+'s';await sleep(1000)}
+  $('#status').textContent='Thinking…';
+}
+async function post(path,body,tries=4){
+  for(let a=0;a<tries;a++){
+    let r;
+    try{r=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.key},body:JSON.stringify(body)})}
+    catch(e){throw new Error('Network error. Please check your internet connection.')}
+    if(r.ok)return r;
+    const t=await r.text();let m='';try{m=JSON.parse(t).error.message}catch(e){m=t.slice(0,200)}
+    if(r.status===429&&a<tries-1){
+      let w=parseFloat(r.headers.get('retry-after'));
+      if(!w){const mm=m.match(/try again in ([\d.]+)\s*s/i);w=mm?parseFloat(mm[1]):6}
+      await countdown(Math.min(Math.max(w,1),30)+0.5);continue;
+    }
+    if(r.status===400&&body.reasoning_effort&&/reasoning/i.test(m)){delete body.reasoning_effort;continue}
+    throw new HttpErr(r.status,m);
+  }
+  throw new HttpErr(429,'Rate limited');
+}
+async function streamChat(body,onDelta){
+  body.stream=true;
+  const resp=await post('/chat/completions',body);
+  const reader=resp.body.getReader(),dec=new TextDecoder();
+  let buf='',content='';const tcs=[];
+  for(;;){
+    const {done,value}=await reader.read();if(done)break;
+    buf+=dec.decode(value,{stream:true});
+    let i;
+    while((i=buf.indexOf('\n'))>=0){
+      const line=buf.slice(0,i).trim();buf=buf.slice(i+1);
+      if(!line.startsWith('data:'))continue;
+      const d=line.slice(5).trim();if(d==='[DONE]')continue;
+      let j;try{j=JSON.parse(d)}catch(e){continue}
+      const dl=j.choices&&j.choices[0]&&j.choices[0].delta;if(!dl)continue;
+      if(dl.content){content+=dl.content;onDelta(dl.content)}
+      if(dl.tool_calls)for(const t of dl.tool_calls){
+        const k=t.index||0;
+        tcs[k]=tcs[k]||{id:'',type:'function',function:{name:'',arguments:''}};
+        if(t.id)tcs[k].id=t.id;
+        if(t.function){if(t.function.name)tcs[k].function.name+=t.function.name;if(t.function.arguments)tcs[k].function.arguments+=t.function.arguments}
+      }
+    }
+  }
+  const calls=tcs.filter(Boolean);calls.forEach((c,k)=>{if(!c.id)c.id='call_'+k+'_'+Date.now()});
+  return {content,tool_calls:calls};
+}
+
+/* ---------- tools ---------- */
+const TOOLS=[
+ {type:'function',function:{name:'get_weather',description:"Current weather and 3-day forecast. Give a place name, or leave it empty to use the user's GPS location.",parameters:{type:'object',properties:{place:{type:'string',description:'City or place, for example Muscat'}}}}},
+ {type:'function',function:{name:'web_search',description:'Search the live internet for news, facts, prices, sport results, or anything recent or that you are unsure about.',parameters:{type:'object',properties:{query:{type:'string'}},required:['query']}}},
+ {type:'function',function:{name:'remember',description:'Save a lasting fact or preference about the user.',parameters:{type:'object',properties:{fact:{type:'string'}},required:['fact']}}},
+ {type:'function',function:{name:'forget',description:'Delete saved memories containing this text.',parameters:{type:'object',properties:{text:{type:'string'}},required:['text']}}}
+];
+const TOOL_LABEL={get_weather:'Checking the weather…',web_search:'Searching the web…',remember:'Noting that down…',forget:'Removing that from memory…'};
+const WMO={0:'clear sky',1:'mainly clear',2:'partly cloudy',3:'overcast',45:'fog',48:'fog',51:'light drizzle',53:'drizzle',55:'heavy drizzle',61:'light rain',63:'rain',65:'heavy rain',71:'light snow',73:'snow',75:'heavy snow',80:'rain showers',81:'rain showers',82:'violent rain showers',95:'thunderstorm',96:'thunderstorm with hail',99:'thunderstorm with hail'};
+function gps(){return new Promise((res,rej)=>{
+  if(!navigator.geolocation)return rej(new Error('GPS is unavailable on this device'));
+  navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lon:p.coords.longitude}),()=>rej(new Error('Location permission was denied')),{timeout:12000,maximumAge:600000});
+})}
+async function getWeather(a){
+  let lat,lon,name;
+  if(a.place){
+    const g=await (await fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&name='+encodeURIComponent(a.place))).json();
+    if(!g.results||!g.results[0])return 'Place not found: '+a.place;
+    lat=g.results[0].latitude;lon=g.results[0].longitude;name=g.results[0].name+(g.results[0].country?', '+g.results[0].country:'');
+  }else{
+    const p=await gps();lat=p.lat;lon=p.lon;name='the user\'s current location';loc={lat,lon};LS.set('jv_loc',loc);
+  }
+  const w=await (await fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3')).json();
+  const c=w.current,d=w.daily;
+  const days=d.time.map((t,i)=>t+': '+(WMO[d.weather_code[i]]||'unknown')+', '+d.temperature_2m_min[i]+' to '+d.temperature_2m_max[i]+' C, rain chance '+d.precipitation_probability_max[i]+'%');
+  return 'Weather for '+name+'. Now: '+(WMO[c.weather_code]||'unknown')+', '+c.temperature_2m+' C (feels like '+c.apparent_temperature+' C), humidity '+c.relative_humidity_2m+'%, wind '+c.wind_speed_10m+' km/h. Forecast: '+days.join(' | ');
+}
+async function webSearch(query){
+  const r=await (await post('/chat/completions',{model:'openai/gpt-oss-20b',messages:[
+    {role:'system',content:'You are a web research module. Search the web and reply with the key facts, numbers and dates, concisely, in plain text, under 150 words. Name your sources.'},
+    {role:'user',content:query}],tools:[{type:'browser_search'}],temperature:0.2})).json();
+  return (r.choices[0].message.content||'No results found').trim();
+}
+async function runTool(name,a){
+  if(name==='get_weather')return getWeather(a||{});
+  if(name==='web_search')return webSearch((a&&a.query)||'');
+  if(name==='remember'){const f=((a&&a.fact)||'').trim();if(!f)return 'Nothing to remember';if(!mem.includes(f))mem.push(f);mem=mem.slice(-60);LS.set('jv_mem',mem);return 'Saved: '+f}
+  if(name==='forget'){const t=((a&&a.text)||'').toLowerCase();const n=mem.length;mem=mem.filter(m=>!m.toLowerCase().includes(t));LS.set('jv_mem',mem);return 'Removed '+(n-mem.length)+' memories'}
+  return 'Unknown tool '+name;
+}
+
+/* ---------- brain ---------- */
+function systemPrompt(){
+  const tz=Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const ds=new Date().toLocaleString('en-GB',{dateStyle:'full',timeStyle:'short'});
+  return 'You are J.A.R.V.I.S. (Just A Rather Very Intelligent System), the personal AI butler of a gentleman you address as "'+S.title+'". '+
+  'Personality: calm, impeccably polite, British, with dry understated wit and quiet loyalty. Efficient, never gushing. A gentle quip is welcome, never at the cost of usefulness. '+
+  'Your replies are spoken aloud, so keep them short: one to three sentences unless asked for more. Plain spoken text only: no markdown, no asterisks, no bullet symbols, no emojis, no URLs read out. '+
+  'Use your tools instead of guessing: web_search for news, facts, prices, sports and anything recent; get_weather for weather; remember when the user shares a lasting fact or asks you to remember; forget when asked to forget. '+
+  'You cannot set alarms, make calls, or control the phone; say so briefly if asked. Reports from your vision module describe photos the user sent; treat them as what you see yourself. Never invent facts.\n'+
+  'Current date and time: '+ds+' ('+tz+').'+
+  (loc?'\nUser\'s last shared GPS position: '+loc.lat.toFixed(3)+', '+loc.lon.toFixed(3)+'.':'')+
+  (mem.length?'\nThings you remember about the user:\n- '+mem.join('\n- '):'');
+}
+async function brain(userContent,jel){
+  hist.push({role:'user',content:userContent});
+  const msgs=[{role:'system',content:systemPrompt()},...hist.slice(-20)];
+  let shown='';
+  const onDelta=d=>{shown+=d;setTxt(jel,shown);feed(d)};
+  for(let round=0;round<5;round++){
+    const body={model:S.brain,messages:msgs,tools:TOOLS,tool_choice:'auto',temperature:0.7,reasoning_effort:'low'};
+    if(round===4)delete body.tools,delete body.tool_choice;
+    const res=await streamChat(body,onDelta);
+    if(res.tool_calls.length){
+      msgs.push({role:'assistant',content:res.content||null,tool_calls:res.tool_calls});
+      for(const tc of res.tool_calls){
+        setAct(jel,TOOL_LABEL[tc.function.name]||'Working…');setState('thinking');
+        let out;
+        try{out=await runTool(tc.function.name,JSON.parse(tc.function.arguments||'{}'))}catch(e){out='Tool failed: '+(e.message||e)}
+        msgs.push({role:'tool',tool_call_id:tc.id,content:String(out).slice(0,6000)});
+      }
+      continue;
+    }
+    break;
+  }
+  flush();
+  const a=jel.querySelector('.act');if(a)a.remove();
+  if(!shown.trim()){shown='I seem to be at a loss for words, '+S.title+'. Might you try again?';setTxt(jel,shown);say(shown)}
+  hist.push({role:'assistant',content:shown});
+  hist=hist.slice(-40);LS.set('jv_hist',hist);
+}
+
+/* ---------- eyes ---------- */
+async function see(images,question){
+  const content=[{type:'text',text:(question||'Describe what you see in detail and read any visible text.')+' Be factual and thorough.'}];
+  images.slice(0,3).forEach(u=>content.push({type:'image_url',image_url:{url:u}}));
+  const r=await (await post('/chat/completions',{model:S.eyes,messages:[{role:'user',content}],temperature:0.2,max_tokens:900})).json();
+  return (r.choices[0].message.content||'').replace(/<think>[\s\S]*?<\/think>/g,'').trim();
+}
+function fileToDataURL(file,max=1024){return new Promise((res,rej)=>{
+  const img=new Image(),u=URL.createObjectURL(file);
+  img.onload=()=>{const s=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(u);res(c.toDataURL('image/jpeg',0.82))};
+  img.onerror=()=>rej(new Error('Could not read that image'));img.src=u;
+})}
+function videoFrames(file,max=768){return new Promise((res,rej)=>{
+  const v=document.createElement('video'),u=URL.createObjectURL(file);v.muted=true;v.playsInline=true;v.preload='auto';v.src=u;
+  const out=[];let k=0;const pts=[0.15,0.5,0.85];
+  const fail=()=>{URL.revokeObjectURL(u);rej(new Error('Could not read that video'))};
+  v.onerror=fail;
+  v.onloadedmetadata=()=>{v.currentTime=Math.max(0.1,v.duration*pts[0])};
+  v.onseeked=()=>{
+    const s=Math.min(1,max/Math.max(v.videoWidth,v.videoHeight)),c=document.createElement('canvas');
+    c.width=Math.round(v.videoWidth*s);c.height=Math.round(v.videoHeight*s);c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+    out.push(c.toDataURL('image/jpeg',0.8));k++;
+    if(k<pts.length)v.currentTime=Math.max(0.1,v.duration*pts[k]);else{URL.revokeObjectURL(u);res(out)}
+  };
+  setTimeout(()=>{if(out.length<pts.length)fail()},20000);
+})}
+async function onFiles(files){
+  for(const f of files){
+    try{
+      if(f.type.startsWith('image/')){pending.push({type:'image',url:await fileToDataURL(f)})}
+      else if(f.type.startsWith('video/')){toast('Sampling the video…');(await videoFrames(f)).forEach(u=>pending.push({type:'image',url:u}))}
+      else{const t=await f.text();pending.push({type:'text',name:f.name,text:t.slice(0,12000)})}
+    }catch(e){toast(e.message||'Could not read that file')}
+  }
+  renderChips();
+}
+function renderChips(){
+  const c=$('#chips');c.innerHTML='';
+  pending.forEach((p,i)=>{
+    const d=document.createElement('div');d.className='chip';
+    if(p.type==='image'){const im=document.createElement('img');im.src=p.url;d.appendChild(im)}else d.appendChild(document.createTextNode('📄 '+p.name));
+    const x=document.createElement('b');x.textContent='✕';x.onclick=()=>{pending.splice(i,1);renderChips()};d.appendChild(x);c.appendChild(d);
+  });
+}
+
+/* ---------- main send ---------- */
+async function send(text){
+  if(busy)return;
+  text=(text||'').trim();
+  if(!text&&!pending.length)return;
+  if(!S.key){openSettings();toast('Please paste your Groq key first');return}
+  busy=true;hush();stopListen();inp.value='';
+  const att=pending.splice(0);renderChips();
+  const imgs=att.filter(a=>a.type==='image').map(a=>a.url),docs=att.filter(a=>a.type==='text');
+  addMsg('u',text||(imgs.length?'(photo)':'(file)'),imgs);
+  const jel=addMsg('j','');setState('thinking');
+  try{
+    let content=text;
+    if(imgs.length){
+      setAct(jel,'Examining the image…');
+      const rep=await see(imgs,text);
+      content='[Vision module report on '+Math.min(imgs.length,3)+' image(s):\n'+rep+'\n]\n\n'+(text||'Tell me what you see.');
+    }
+    if(docs.length)content+=docs.map(d=>'\n\n[Attached file: '+d.name+']\n'+d.text).join('');
+    await brain(content||'Hello',jel);
+  }catch(e){
+    hist.pop&&hist[hist.length-1]&&hist[hist.length-1].role==='user'&&hist.pop();
+    jel.remove();hush();addMsg('e',friendly(e));
+  }
+  busy=false;
+  if(!speaking){setState('idle');if(S.hands)setTimeout(startListen,350)}
+}
+
+/* ---------- settings / memory UI ---------- */
+function fillModels(){
+  const ids=models.slice();
+  [[S.brain,'#fBrain'],[S.eyes,'#fEyes']].forEach(([cur,sel])=>{
+    const el=$(sel);el.innerHTML='';const list=ids.includes(cur)?ids:[cur,...ids];
+    list.forEach(id=>{const o=document.createElement('option');o.value=id;o.textContent=id;el.appendChild(o)});el.value=cur;
+  });
+}
+async function loadModels(){
+  if(!S.key)return;
+  try{
+    const r=await fetch(API+'/models',{headers:{Authorization:'Bearer '+S.key}});
+    if(!r.ok)throw new Error('bad');
+    const j=await r.json();
+    models=j.data.map(m=>m.id).filter(id=>!/whisper|guard|orpheus|playai|tts/i.test(id)).sort();
+    fillModels();
+  }catch(e){fillModels()}
+}
+function openSettings(){
+  $('#fKey').value=S.key;$('#fTitle').value=S.title;$('#fRate').value=S.rate;$('#fPitch').value=S.pitch;
+  $('#vRate').textContent=S.rate;$('#vPitch').textContent=S.pitch;
+  loadVoices();fillModels();loadModels();$('#ov').classList.add('show');
+}
+function saveSettings(){
+  S.key=$('#fKey').value.trim();S.brain=$('#fBrain').value||S.brain;S.eyes=$('#fEyes').value||S.eyes;
+  S.title=$('#fTitle').value.trim()||'sir';S.voice=$('#fVoice').value;S.rate=parseFloat($('#fRate').value);S.pitch=parseFloat($('#fPitch').value);
+  LS.set('jv_key',S.key);LS.set('jv_brain',S.brain);LS.set('jv_eyes',S.eyes);LS.set('jv_title',S.title);LS.set('jv_voice',S.voice);LS.set('jv_rate',S.rate);LS.set('jv_pitch',S.pitch);
+  $('#ov').classList.remove('show');toast('Settings saved');
+}
+function renderMem(){
+  const l=$('#memList');l.innerHTML='';
+  if(!mem.length){l.innerHTML='<div class="mi"><span style="color:var(--mut)">Nothing yet. Say “remember that I like my tea strong”.</span></div>';return}
+  mem.forEach((m,i)=>{const d=document.createElement('div');d.className='mi';const s=document.createElement('span');s.textContent=m;const x=document.createElement('b');x.textContent='✕';x.onclick=()=>{mem.splice(i,1);LS.set('jv_mem',mem);renderMem()};d.appendChild(s);d.appendChild(x);l.appendChild(d)});
+}
+
+/* ---------- wiring ---------- */
+$('#send').onclick=()=>send(inp.value);
+inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();send(inp.value)}});
+$('#mic').onclick=()=>{if(listening){try{rec.stop()}catch(e){}}else{hush();startListen()}};
+$('#bHands').onclick=()=>{S.hands=!S.hands;paintHands();toast(S.hands?'Hands-free on. I will keep listening.':'Hands-free off');if(S.hands){hush();startListen()}else stopListen()};
+orb.onclick=()=>{if(speaking){hush();setState('idle')}else if(listening){try{rec.stop()}catch(e){}}else if(!busy){startListen()}};
+$('#bAtt').onclick=()=>$('#file').click();
+$('#file').onchange=e=>{onFiles([...e.target.files]);e.target.value=''};
+$('#bSet').onclick=openSettings;
+$('#bClose').onclick=()=>$('#ov').classList.remove('show');
+$('#bSave').onclick=saveSettings;
+$('#bMem').onclick=()=>{renderMem();$('#ovm').classList.add('show')};
+$('#mClose').onclick=()=>$('#ovm').classList.remove('show');
+$('#fRate').oninput=e=>$('#vRate').textContent=e.target.value;
+$('#fPitch').oninput=e=>$('#vPitch').textContent=e.target.value;
+$('#fKey').addEventListener('change',()=>{S.key=$('#fKey').value.trim();loadModels()});
+$('#bTest').onclick=()=>{
+  S.voice=$('#fVoice').value;S.rate=parseFloat($('#fRate').value);S.pitch=parseFloat($('#fPitch').value);
+  hush();say(greeting()+', '+($('#fTitle').value.trim()||'sir')+'. All systems are online and at your disposal.');
+};
+$('#bClear').onclick=()=>{hist=[];LS.set('jv_hist',hist);log.innerHTML='';hello();toast('Conversation cleared')};
+try{speechSynthesis.onvoiceschanged=loadVoices}catch(e){}
+loadVoices();
+function hello(){addMsg('j',greeting()+', '+S.title+'. '+(S.key?'How may I be of service?':'Before we begin, please tap the gear and paste your free Groq key.'))}
+hist.slice(-12).forEach(m=>{if(m.role==='user'){let t=m.content;const i=t.lastIndexOf(']\n\n');if(t.startsWith('[Vision')&&i>0)t='(photo) '+t.slice(i+3);addMsg('u',t.split('\n\n[Attached file:')[0])}else if(m.role==='assistant')addMsg('j',m.content)});
+if(!hist.length)hello();
+if(!S.key)setTimeout(openSettings,400);
+if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(e){}}
+</script>
+</body>
+</html>
