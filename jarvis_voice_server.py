@@ -2,14 +2,27 @@
 
 Runs OpenJarvis's Kokoro voice on this phone and hands WAV audio to the app.
 Listens on this phone only (127.0.0.1) and only answers the Jarvis app's website.
+Also serves voicepack.json (the instant phrases made by make_voicepack.py).
 
 Run from the OpenJarvis folder:  .venv/bin/python jarvis_voice_server.py
 """
+import io
 import json
 import os
 import re
 import threading
+import time
+import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+try:  # use a sensible number of CPU threads on a phone (big and little cores)
+    import torch
+
+    torch.set_num_threads(int(os.environ.get("JARVIS_THREADS", "4")))
+    print("[voice] using %d CPU threads" % torch.get_num_threads(), flush=True)
+except Exception:
+    pass
 
 from openjarvis.speech.kokoro_tts import KokoroTTSBackend
 
@@ -17,6 +30,7 @@ PORT = int(os.environ.get("JARVIS_VOICE_PORT", "8880"))
 ALLOWED = {"https://kingkhan699.github.io"}
 ALLOWED.update(o for o in os.environ.get("JARVIS_EXTRA_ORIGINS", "").split(",") if o)
 VOICE_RE = re.compile(r"^[a-z]{2}_[a-z]+$")
+PACK = Path(__file__).with_name("voicepack.json")
 
 lock = threading.Lock()
 tts = KokoroTTSBackend()
@@ -24,7 +38,17 @@ tts = KokoroTTSBackend()
 
 def synth(text, voice, speed):
     with lock:
-        return tts.synthesize(text, voice_id=voice, speed=speed, output_format="wav").audio
+        t0 = time.time()
+        audio = tts.synthesize(text, voice_id=voice, speed=speed, output_format="wav").audio
+        took = time.time() - t0
+    try:
+        with wave.open(io.BytesIO(audio)) as w:
+            secs = w.getnframes() / float(w.getframerate())
+        print("[voice] made %.1fs of speech in %.1fs (%.1fx real time): %s"
+              % (secs, took, secs / took if took else 0, text[:40]), flush=True)
+    except Exception:
+        print("[voice] synthesis took %.1fs: %s" % (took, text[:40]), flush=True)
+    return audio
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -54,6 +78,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/health"):
             self._send(200, b'{"ok":true}')
+        elif self.path.startswith("/voicepack.json"):
+            if PACK.exists():
+                self._send(200, PACK.read_bytes())
+            else:
+                self._send(404, b'{"error":"no voicepack yet"}')
         else:
             self._send(404, b'{"error":"not found"}')
 

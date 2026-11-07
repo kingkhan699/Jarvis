@@ -138,6 +138,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
     <input type="text" id="fKUrl" placeholder="http://localhost:8880" autocapitalize="off" autocomplete="off">
     <div class="row"><button class="btn" id="bKCheck">Check connection</button></div>
     <small id="kStat"></small>
+    <div class="row"><button class="btn" id="bPack">Install voice pack</button></div>
+    <small id="pStat"></small>
   </div>
   <label id="pvLabel">PHONE VOICE</label>
   <select id="fVoice"></select>
@@ -204,17 +206,55 @@ function pickVoice(){
   return male||gb[0]||voices.find(v=>/^en/i.test(v.lang))||null;
 }
 function clean(t){return t.replace(/```[\s\S]*?```/g,' code omitted. ').replace(/\[([^\]]+)\]\([^)]+\)/g,'$1').replace(/https?:\/\/\S+/g,'link').replace(/[*_#`>~|]/g,'').replace(/\s+/g,' ').trim()}
-let curAudio=null,warned=false;
+let curAudio=null,warned=false,pack=null,packMap={},audioStarted=false,fillerT=null,fillerRes=null,fillerAudio=null,fillerP=Promise.resolve(),listenAfter=false,greeted=false;
+const IDB={
+  open(){return new Promise((res,rej)=>{const r=indexedDB.open('jarvis',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})},
+  async get(k){const db=await this.open();return new Promise((res,rej)=>{const g=db.transaction('kv').objectStore('kv').get(k);g.onsuccess=()=>res(g.result);g.onerror=()=>rej(g.error)})},
+  async set(k,v){const db=await this.open();return new Promise((res,rej)=>{const t=db.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=()=>res();t.onerror=()=>rej(t.error)})}
+};
+const norm=t=>t.toLowerCase().replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+function paintPack(){
+  const el=document.getElementById('pStat');if(!el)return;
+  el.style.color=pack?'#7dffb2':'var(--mut)';
+  el.textContent=pack?('Voice pack installed: '+Object.keys(pack.clips).length+' instant phrases.'):'No voice pack yet. Make it in Termux, then tap the button above.';
+}
+function setPack(p){
+  pack=p&&p.clips?p:null;packMap={};
+  if(pack)for(const k in pack.clips)packMap[norm(pack.clips[k].text)]=k;
+  paintPack();
+}
+function packOn(){return !!pack&&S.engine==='kokoro'&&String(S.title).toLowerCase()==='sir'&&(!pack.voice||pack.voice===S.kvoice)}
+async function loadPack(){try{const p=await IDB.get('pack');if(p)setPack(p)}catch(e){}}
+async function installPack(){
+  const el=$('#pStat');el.style.color='var(--mut)';el.textContent='Downloading…';
+  const base=($('#fKUrl').value||'http://localhost:8880').trim().replace(/\/+$/,'');
+  for(const u of [base+'/voicepack.json','voicepack.json']){
+    try{
+      const r=await fetch(u,{cache:'no-store'});if(!r.ok)continue;
+      const p=await r.json();if(!p||!p.clips)continue;
+      setPack(p);try{await IDB.set('pack',p)}catch(e){}
+      return;
+    }catch(e){}
+  }
+  el.style.color='var(--err)';el.textContent='Could not find a voice pack. Make it in Termux first, with the voice server running.';
+}
 function kurlBase(){return (S.kurl||'http://localhost:8880').trim().replace(/\/+$/,'')}
 async function kfetch(text){
   const r=await fetch(kurlBase()+'/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text,voice:S.kvoice,speed:S.rate})});
   if(!r.ok)throw new Error('voice server answered '+r.status);
   return URL.createObjectURL(await r.blob());
 }
+function clipItem(key){const c=pack&&pack.clips[key];return c?{text:c.text,clip:c.data}:null}
+function sayClip(key){
+  if(!packOn())return false;
+  const it=clipItem(key);if(!it)return false;
+  q.push(it);if(!speaking)nextSpeech();return true;
+}
 function say(t){
   t=clean(t);if(!t)return;
-  const it={text:t,p:null};
-  if(S.engine==='kokoro'){it.p=kfetch(t);it.p.catch(()=>{})}
+  let it=null;
+  if(packOn()){const k=packMap[norm(t)];if(k)it=clipItem(k)}
+  if(!it){it={text:t,p:null};if(S.engine==='kokoro'){it.p=kfetch(t);it.p.catch(()=>{})}}
   q.push(it);if(!speaking)nextSpeech();
 }
 function phoneSpeak(text,done){
@@ -224,21 +264,29 @@ function phoneSpeak(text,done){
   u.onend=done;u.onerror=done;
   try{speechSynthesis.speak(u)}catch(e){done()}
 }
+function started(){audioStarted=true;clearTimeout(fillerT)}
+function playData(src,g,done,fb){
+  const a=new Audio(src);curAudio=a;let f=false;
+  const end=()=>{if(f)return;f=true;done()};
+  const bad=()=>{if(f)return;f=true;if(fb)phoneSpeak(fb,done);else done()};
+  a.onplaying=()=>{started();if(g===gen)setState('speaking')};
+  a.onended=end;a.onerror=bad;
+  const pr=a.play();if(pr&&pr.catch)pr.catch(bad);
+}
 async function nextSpeech(){
   if(!q.length){speaking=false;onSpeechDone();return}
   speaking=true;
   const g=gen,it=q.shift();
   const done=()=>{if(g===gen)nextSpeech()};
+  if(it.clip){await fillerP;if(g!==gen)return;playData(it.clip,g,done,null);return}
   if(it.p){
-    setState('thinking','Preparing voice…');
+    if(!audioStarted)setState('thinking','Preparing voice…');
     try{
       const url=await it.p;
       if(g!==gen){URL.revokeObjectURL(url);return}
-      const a=new Audio(url);curAudio=a;
-      a.onplaying=()=>{if(g===gen)setState('speaking')};
-      a.onended=()=>{URL.revokeObjectURL(url);done()};
-      a.onerror=()=>{URL.revokeObjectURL(url);phoneSpeak(it.text,done)};
-      await a.play();
+      await fillerP;
+      if(g!==gen){URL.revokeObjectURL(url);return}
+      playData(url,g,()=>{URL.revokeObjectURL(url);done()},it.text);
       return;
     }catch(e){
       if(g!==gen)return;
@@ -248,17 +296,49 @@ async function nextSpeech(){
   setState('speaking');
   phoneSpeak(it.text,done);
 }
-function hush(){gen++;q=[];speaking=false;if(curAudio){try{curAudio.pause()}catch(e){}curAudio=null}try{speechSynthesis.cancel()}catch(e){}}
-function onSpeechDone(){
-  if(!busy){setState('idle');if(S.hands)setTimeout(startListen,350)}
+function hush(){
+  gen++;q=[];speaking=false;audioStarted=false;clearTimeout(fillerT);
+  if(fillerRes){fillerRes();fillerRes=null}
+  if(fillerAudio){try{fillerAudio.pause()}catch(e){}fillerAudio=null}
+  if(curAudio){try{curAudio.pause()}catch(e){}curAudio=null}
+  try{speechSynthesis.cancel()}catch(e){}
 }
-let sb='';
+const FILLERS=['f_moment','f_working','f_allow','f_think'];
+function armFiller(){
+  clearTimeout(fillerT);
+  if(!packOn())return;
+  fillerT=setTimeout(()=>{
+    if(audioStarted)return;
+    const keys=FILLERS.filter(k=>pack.clips[k]);if(!keys.length)return;
+    const c=pack.clips[keys[Math.floor(Math.random()*keys.length)]];
+    const a=new Audio(c.data);fillerAudio=a;started();
+    fillerP=new Promise(res=>{
+      fillerRes=res;
+      const e=()=>{fillerRes=null;res()};
+      a.onended=e;a.onerror=e;
+      const pr=a.play();if(pr&&pr.catch)pr.catch(e);
+    });
+    setState('speaking');
+  },2200);
+}
+function onSpeechDone(){
+  if(!busy){setState('idle');if(S.hands||listenAfter){listenAfter=false;setTimeout(startListen,350)}}
+}
+let sb='',firstDone=false;
+function nextChunk(){
+  // end of a sentence (min 10 chars so short phrases like "Noted, sir." stand alone)
+  const a=sb.match(/^([\s\S]{10,}?[.!?:;])\s+([\s\S]*)$/);
+  // with the studio voice, also cut the very first chunk at a comma (min 14 chars) so speech starts sooner
+  const b=(S.engine==='kokoro'&&!firstDone)?sb.match(/^([\s\S]{14,}?,)\s+([\s\S]*)$/):null;
+  if(a&&b)return b[1].length<a[1].length?b:a;
+  return a||b;
+}
 function feed(d){
   sb+=d;let m;
-  while((m=sb.match(/^([\s\S]{12,}?[.!?:;])\s+([\s\S]*)$/))){say(m[1]);sb=m[2]}
+  while((m=nextChunk())){say(m[1]);sb=m[2];firstDone=true}
   if(sb.length>240){const k=sb.lastIndexOf(', ',200);if(k>40){say(sb.slice(0,k+1));sb=sb.slice(k+2)}}
 }
-function flush(){if(sb.trim())say(sb);sb=''}
+function flush(){if(sb.trim())say(sb);sb='';firstDone=false}
 
 /* ---------- speech in ---------- */
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -271,7 +351,7 @@ function startListen(){
   rec.onstart=()=>{listening=true;setState('listening');$('#mic').classList.add('on')};
   rec.onresult=e=>{let t='';for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;inp.value=t;if(e.results[e.results.length-1].isFinal)finalT=t};
   rec.onerror=e=>{
-    if(e.error==='not-allowed'||e.error==='service-not-allowed'){S.hands=false;paintHands();toast('Microphone permission was denied. Allow it in Chrome site settings.',4200)}
+    if(e.error==='not-allowed'||e.error==='service-not-allowed'){S.hands=false;paintHands();toast('Microphone permission was denied. Allow it in Chrome site settings.',4200);sayClip('e_mic')}
     else if(e.error==='audio-capture'||e.error==='network'){S.hands=false;paintHands();toast('Voice input problem: '+e.error)}
   };
   rec.onend=()=>{
@@ -392,13 +472,21 @@ function systemPrompt(){
   const ds=new Date().toLocaleString('en-GB',{dateStyle:'full',timeStyle:'short'});
   return 'You are J.A.R.V.I.S. (Just A Rather Very Intelligent System), the personal AI butler of a gentleman you address as "'+S.title+'". '+
   'Personality: calm, impeccably polite, British, with dry understated wit and quiet loyalty. Efficient, never gushing. A gentle quip is welcome, never at the cost of usefulness. '+
-  'Your replies are spoken aloud, so keep them short: one to three sentences unless asked for more. Plain spoken text only: no markdown, no asterisks, no bullet symbols, no emojis, no URLs read out. '+
+  'Your replies are spoken aloud, so keep them short: one or two brief sentences unless the user asks for more detail. Plain spoken text only: no markdown, no asterisks, no bullet symbols, no emojis, no URLs read out. '+
   'Use your tools instead of guessing: web_search for news, facts, prices, sports and anything recent; get_weather for weather; remember when the user shares a lasting fact or asks you to remember; forget when asked to forget. '+
   'You cannot set alarms, make calls, or control the phone; say so briefly if asked. Reports from your vision module describe photos the user sent; treat them as what you see yourself. Never invent facts.\n'+
   'Current date and time: '+ds+' ('+tz+').'+
   (loc?'\nUser\'s last shared GPS position: '+loc.lat.toFixed(3)+', '+loc.lon.toFixed(3)+'.':'')+
+  openerRule()+
   (mem.length?'\nThings you remember about the user:\n- '+mem.join('\n- '):'');
 }
+function openerRule(){
+  if(!packOn())return '';
+  const o=Object.keys(pack.clips).filter(k=>k.startsWith('a_')).map(k=>'"'+pack.clips[k].text+'"');
+  if(!o.length)return '';
+  return '\nWhen the user asks you to do, find or explain something, begin your reply with exactly one of these openers, word for word, as its own sentence, then continue: '+o.join(', ')+'. Skip the opener for greetings, thanks and casual chat, and never use the same opener twice in a row.';
+}
+
 async function brain(userContent,jel){
   hist.push({role:'user',content:userContent});
   const msgs=[{role:'system',content:systemPrompt()},...hist.slice(-20)];
@@ -412,6 +500,7 @@ async function brain(userContent,jel){
       msgs.push({role:'assistant',content:res.content||null,tool_calls:res.tool_calls});
       for(const tc of res.tool_calls){
         setAct(jel,TOOL_LABEL[tc.function.name]||'Working…');setState('thinking');
+        const ck={get_weather:'t_weather',web_search:'t_search'}[tc.function.name];if(ck)sayClip(ck);
         let out;
         try{out=await runTool(tc.function.name,JSON.parse(tc.function.arguments||'{}'))}catch(e){out='Tool failed: '+(e.message||e)}
         msgs.push({role:'tool',tool_call_id:tc.id,content:String(out).slice(0,6000)});
@@ -478,7 +567,7 @@ async function send(text){
   text=(text||'').trim();
   if(!text&&!pending.length)return;
   if(!S.key){openSettings();toast('Please paste your Groq key first');return}
-  busy=true;hush();stopListen();inp.value='';
+  busy=true;hush();stopListen();inp.value='';sb='';firstDone=false;armFiller();
   const att=pending.splice(0);renderChips();
   const imgs=att.filter(a=>a.type==='image').map(a=>a.url),docs=att.filter(a=>a.type==='text');
   addMsg('u',text||(imgs.length?'(photo)':'(file)'),imgs);
@@ -487,6 +576,7 @@ async function send(text){
     let content=text;
     if(imgs.length){
       setAct(jel,'Examining the image…');
+      sayClip('t_eyes');
       const rep=await see(imgs,text);
       content='[Vision module report on '+Math.min(imgs.length,3)+' image(s):\n'+rep+'\n]\n\n'+(text||'Tell me what you see.');
     }
@@ -495,7 +585,10 @@ async function send(text){
   }catch(e){
     hist.pop&&hist[hist.length-1]&&hist[hist.length-1].role==='user'&&hist.pop();
     jel.remove();hush();addMsg('e',friendly(e));
+    const ek=e instanceof HttpErr?({401:'e_key',404:'e_model',429:'e_limit'}[e.status]||'e_gen'):(/network/i.test(e.message||'')?'e_net':'e_gen');
+    sayClip(ek);
   }
+  clearTimeout(fillerT);
   busy=false;
   if(!speaking){setState('idle');if(S.hands)setTimeout(startListen,350)}
 }
@@ -521,7 +614,7 @@ async function loadModels(){
 function openSettings(){
   $('#fKey').value=S.key;$('#fTitle').value=S.title;$('#fRate').value=S.rate;$('#fPitch').value=S.pitch;
   $('#vRate').textContent=S.rate;$('#vPitch').textContent=S.pitch;
-  $('#fEngine').value=S.engine;$('#fKVoice').value=S.kvoice;$('#fKUrl').value=S.kurl;$('#kStat').textContent='';toggleK();
+  $('#fEngine').value=S.engine;$('#fKVoice').value=S.kvoice;$('#fKUrl').value=S.kurl;$('#kStat').textContent='';toggleK();paintPack();
   loadVoices();fillModels();loadModels();$('#ov').classList.add('show');
 }
 function toggleK(){const k=$('#fEngine').value==='kokoro';$('#kBox').style.display=k?'block':'none';$('#pvLabel').textContent=k?'BACKUP PHONE VOICE (used if the studio voice is offline)':'PHONE VOICE'}
@@ -554,7 +647,17 @@ $('#send').onclick=()=>send(inp.value);
 inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();send(inp.value)}});
 $('#mic').onclick=()=>{if(listening){try{rec.stop()}catch(e){}}else{hush();startListen()}};
 $('#bHands').onclick=()=>{S.hands=!S.hands;paintHands();toast(S.hands?'Hands-free on. I will keep listening.':'Hands-free off');if(S.hands){hush();startListen()}else stopListen()};
-orb.onclick=()=>{if(speaking){hush();setState('idle')}else if(listening){try{rec.stop()}catch(e){}}else if(!busy){startListen()}};
+orb.onclick=()=>{
+  if(speaking){hush();setState('idle');return}
+  if(listening){try{rec.stop()}catch(e){}return}
+  if(busy)return;
+  if(!greeted&&packOn()){
+    greeted=true;const h=new Date().getHours();
+    const k=(h>=5&&h<12)?'g_morning':(h>=12&&h<18)?'g_afternoon':'g_evening';
+    if(sayClip(k)){listenAfter=true;return}
+  }
+  startListen();
+};
 $('#bAtt').onclick=()=>$('#file').click();
 $('#file').onchange=e=>{onFiles([...e.target.files]);e.target.value=''};
 $('#bSet').onclick=openSettings;
@@ -563,6 +666,7 @@ $('#bSave').onclick=saveSettings;
 $('#bMem').onclick=()=>{renderMem();$('#ovm').classList.add('show')};
 $('#mClose').onclick=()=>$('#ovm').classList.remove('show');
 $('#fEngine').onchange=toggleK;
+$('#bPack').onclick=installPack;
 $('#bKCheck').onclick=checkK;
 $('#fRate').oninput=e=>$('#vRate').textContent=e.target.value;
 $('#fPitch').oninput=e=>$('#vPitch').textContent=e.target.value;
@@ -579,6 +683,7 @@ function hello(){addMsg('j',greeting()+', '+S.title+'. '+(S.key?'How may I be of
 hist.slice(-12).forEach(m=>{if(m.role==='user'){let t=m.content;const i=t.lastIndexOf(']\n\n');if(t.startsWith('[Vision')&&i>0)t='(photo) '+t.slice(i+3);addMsg('u',t.split('\n\n[Attached file:')[0])}else if(m.role==='assistant')addMsg('j',m.content)});
 if(!hist.length)hello();
 if(!S.key)setTimeout(openSettings,400);
+loadPack();
 if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(e){}}
 </script>
 </body>
